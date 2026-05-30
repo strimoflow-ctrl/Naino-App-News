@@ -1,6 +1,7 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import Parser from 'rss-parser';
+import mongoose from 'mongoose';
 import { News } from './models/News.js';
 
 const parser = new Parser();
@@ -39,8 +40,18 @@ const getOgImage = async (url) => {
  * Fetches news from Google News RSS, gets images, and saves to MongoDB
  */
 export const fetchAndSaveNews = async () => {
-  console.log('Starting automated news fetch...');
+  console.log('Starting automated news fetch via GitHub Actions...');
+  
+  const MONGODB_URI = process.env.MONGODB_URI;
+  if (!MONGODB_URI) {
+    console.error('❌ MONGODB_URI is not defined in environment variables.');
+    process.exit(1);
+  }
+
   try {
+    await mongoose.connect(MONGODB_URI);
+    console.log('✅ Connected to MongoDB');
+
     // Google News RSS URL for Education in India
     const feed = await parser.parseURL('https://news.google.com/rss/search?q=NEET+OR+JEE+OR+CBSE+OR+NTA+education&hl=en-IN&gl=IN&ceid=IN:en');
     
@@ -88,5 +99,14 @@ export const fetchAndSaveNews = async () => {
     console.log(`Fetch complete. Saved ${savedCount} new articles.`);
   } catch (error) {
     console.error('Error during news fetch:', error);
+  } finally {
+    await mongoose.disconnect();
+    console.log('🔌 Disconnected from MongoDB. Exiting...');
+    process.exit(0);
   }
 };
+
+// Auto-run if executed directly
+if (process.argv[1] && process.argv[1].endsWith('fetcher.js')) {
+  fetchAndSaveNews();
+}

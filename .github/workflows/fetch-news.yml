@@ -1,0 +1,29 @@
+name: Fetch Daily News
+
+on:
+  schedule:
+    # Runs at 6 AM and 6 PM IST (which is 00:30 and 12:30 UTC)
+    - cron: '30 0,12 * * *'
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  fetch-news:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci || npm install
+        
+      - name: Run Fetcher Script
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: node fetcher.js
