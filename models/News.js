@@ -14,6 +14,10 @@ const newsSchema = new mongoose.Schema({
     required: true,
     unique: true, // Prevent duplicate news articles
   },
+  description: {
+    type: String,
+    default: '',
+  },
   source: {
     type: String,
     default: 'Google News',

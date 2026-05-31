@@ -10,29 +10,51 @@ const parser = new Parser();
 const KEYWORDS = ['NEET', 'JEE', 'CBSE', 'NCERT', 'NTA', 'Exam', 'Result'];
 
 /**
- * Extracts a high-quality og:image from the article URL
+ * Extracts a high-quality og:image and description from the article URL, handling Google News redirects
  */
-const getOgImage = async (url) => {
+const getArticleData = async (url) => {
   try {
-    const response = await axios.get(url, {
-      timeout: 10000,
+    let response = await axios.get(url, {
+      timeout: 15000,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
     });
     
-    const $ = cheerio.load(response.data);
-    let ogImage = $('meta[property="og:image"]').attr('content');
+    let $ = cheerio.load(response.data);
     
-    // Fallback to twitter:image
-    if (!ogImage) {
-      ogImage = $('meta[name="twitter:image"]').attr('content');
+    // Check for meta refresh (Google News redirect)
+    const refresh = $('meta[http-equiv="refresh"]').attr('content') || $('noscript').text();
+    if (refresh && refresh.toLowerCase().includes('url=')) {
+      const match = refresh.match(/url=(.*)/i);
+      if (match && match[1]) {
+        let redirectUrl = match[1].replace(/['"]/g, '').trim();
+        // Fetch the actual article
+        response = await axios.get(redirectUrl, {
+          timeout: 15000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          }
+        });
+        $ = cheerio.load(response.data);
+      }
+    }
+
+    let ogImage = $('meta[property="og:image"]').attr('content') || $('meta[name="twitter:image"]').attr('content');
+    
+    let description = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content');
+    if (!description) {
+      description = $('p').first().text().trim().substring(0, 250);
+      if (description) description += '...';
     }
     
-    return ogImage || null;
+    return { 
+      ogImage: ogImage || null,
+      description: description || 'Click to read the full article.'
+    };
   } catch (error) {
-    console.error(`Failed to fetch image for ${url}:`, error.message);
-    return null;
+    console.error(`Failed to fetch data for ${url}:`, error.message);
+    return { ogImage: null, description: 'Click to read the full article.' };
   }
 };
 
@@ -57,9 +79,9 @@ export const fetchAndSaveNews = async () => {
     
     let savedCount = 0;
     
-    // Process top 10 items to try to get 2 valid ones with good images
-    for (const item of feed.items.slice(0, 10)) {
-      if (savedCount >= 2) break; // Only save top 2 news per run
+    // Process top items to get 1 valid one with good images
+    for (const item of feed.items) {
+      if (savedCount >= 1) break; // Only save 1 news per run
       
       // Check if already in DB
       const exists = await News.findOne({ link: item.link });
@@ -74,22 +96,23 @@ export const fetchAndSaveNews = async () => {
         cleanTitle = cleanTitle.substring(0, lastDashIndex);
       }
       
-      // Get High Quality Image from the actual article
-      const imageUrl = await getOgImage(item.link);
+      // Get High Quality Image and Description from the actual article
+      const { ogImage, description } = await getArticleData(item.link);
       
-      if (imageUrl) {
+      if (ogImage) {
         const newsArticle = new News({
           title: cleanTitle,
           link: item.link,
-          image: imageUrl,
-          source: item.source || 'Google News'
+          image: ogImage,
+          description: description,
+          source: item.source || 'Education News'
         });
         
         await newsArticle.save();
         console.log(`✅ Saved: ${cleanTitle}`);
         savedCount++;
       } else {
-        console.log(`❌ Skipped (No Image): ${cleanTitle}`);
+        console.log(`❌ Skipped (No Image found after resolving redirect): ${cleanTitle}`);
       }
       
       // Add a small delay to avoid rate limiting
