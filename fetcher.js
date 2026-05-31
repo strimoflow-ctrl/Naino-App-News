@@ -74,8 +74,8 @@ export const fetchAndSaveNews = async () => {
     await mongoose.connect(MONGODB_URI);
     console.log('✅ Connected to MongoDB');
 
-    // Google News RSS URL for Education in India
-    const feed = await parser.parseURL('https://news.google.com/rss/search?q=NEET+OR+JEE+OR+CBSE+OR+NTA+education&hl=en-IN&gl=IN&ceid=IN:en');
+    // Times of India Education RSS URL (Direct links, no Google redirects)
+    const feed = await parser.parseURL('https://timesofindia.indiatimes.com/rssfeeds/913168846.cms');
     
     let savedCount = 0;
     
@@ -83,6 +83,11 @@ export const fetchAndSaveNews = async () => {
     for (const item of feed.items) {
       if (savedCount >= 1) break; // Only save 1 news per run
       
+      // Filter by our keywords (NEET, JEE, CBSE, etc.)
+      const titleLower = item.title.toLowerCase();
+      const isRelevant = KEYWORDS.some(keyword => titleLower.includes(keyword.toLowerCase()));
+      if (!isRelevant) continue;
+
       // Check if already in DB
       const exists = await News.findOne({ link: item.link });
       if (exists) continue;
